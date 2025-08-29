@@ -7,6 +7,8 @@ import jwt from "jsonwebtoken";
 import generatedAccessToken from "../utils/generatedAccessToken.js";
 import generateRefreshToken from "../utils/generatedRefreshToken.js";
 import uploadImageCloudinary from "../utils/uploadImageCloudinary.js";
+import generatedOtp from "../utils/generatedOtp.js";
+import forgotPasswordTemplate from "../utils/forgotPasswordTemplate.js";
 
 //REGISTER USER CONTROLLER
 export const registerUserController = async (req, res) => {
@@ -26,7 +28,7 @@ export const registerUserController = async (req, res) => {
     const user = await UserModel.findOne({ email });
 
     if (user) {
-      return res.send({
+      return res.status(409).send({
         status: false,
         message: "Email already exists",
         success: false,
@@ -140,9 +142,9 @@ export const loginUserController = async (req, res) => {
       });
     }
 
-    const userEmail = await UserModel.findOne({ email });
+    const user = await UserModel.findOne({ email });
 
-    if (!userEmail) {
+    if (!user) {
       return res.status(400).send({
         status: false,
         message: "Email is not found or user not register yet",
@@ -152,7 +154,7 @@ export const loginUserController = async (req, res) => {
       });
     }
 
-    if (userEmail.status !== "ACTIVE") {
+    if (user.status !== "ACTIVE") {
       return res.status(400).send({
         status: false,
         message: "Contact to Admin",
@@ -161,28 +163,38 @@ export const loginUserController = async (req, res) => {
       });
     }
 
-    const verifyPassword = bcrypt.compareSync(password, userEmail.password);
+    const verifyPassword = await bcrypt.compareSync(password, user.password);
 
     if (!verifyPassword) {
       return res.status(400).send({
         status: false,
-        message: "Password is not match",
+        message: "Password is not matched",
         success: false,
         error: true,
       });
     }
 
-    const accessToken = await generatedAccessToken(userEmail._id);
-    const refreshToken = await generateRefreshToken(userEmail._id);
+    const accessToken = await generatedAccessToken(user._id);
+    const refreshToken = await generateRefreshToken(user._id);
 
-    const cookiesOption = {
+    const updateUser = await UserModel.findByIdAndUpdate(
+      user?._id,
+      {
+        last_login_date: new Date(),
+      },
+      {
+        new: true,
+      }
+    );
+
+    const cookieOption = {
       httpOnly: true,
       secure: true,
       sameSite: "none",
     };
 
-    res.cookie("accessToken", accessToken, cookiesOption);
-    res.cookie("refreshToken", refreshToken, cookiesOption);
+    res.cookie("accessToken", accessToken, cookieOption);
+    res.cookie("refreshToken", refreshToken, cookieOption);
 
     return res.status(200).send({
       status: true,
@@ -202,6 +214,35 @@ export const loginUserController = async (req, res) => {
       success: false,
     });
     console.log(error, "error");
+  }
+};
+
+//GET LOGIN USERDETAILS
+
+export const getUserDetailsController = async (req, res) => {
+  try {
+    const userId = req.userId;
+
+    console.log(userId, "userid")
+
+    const user = await UserModel.findById(userId).select(
+      "-password -refresh_token"
+    );
+
+    return res.status(200).send({
+      status: true,
+      message: "User details get successfully",
+      error: false,
+      success: true,
+      data: user,
+    });
+  } catch (error) {
+    return res.status(500).send({
+      status: false,
+      message: "Something is wrong",
+      error: true,
+      success: false,
+    });
   }
 };
 
@@ -244,7 +285,7 @@ export const logOutUserController = async (req, res) => {
 export const uploadUserAvatarController = async (req, res) => {
   try {
     const userId = req.userId; //auth middleware
-    const image = req.file; //multer middleware
+    const image = req?.file; //multer middleware
 
     const upload = await uploadImageCloudinary(image);
 
@@ -279,14 +320,14 @@ export const uploadUserAvatarController = async (req, res) => {
 export const updateUserDetailsController = async (req, res) => {
   try {
     const userId = req.userId;
-    const { name, email, mobile, password, } = req.body;
+    const { name, email, mobile, password } = req.body;
     let hashPassword = "";
 
     if (password) {
       hashPassword = bcrypt.hashSync(password, 10);
     }
 
-    if (!name || !email || !mobile || !password ) {
+    if (!name || !email || !mobile || !password) {
       return res.send({
         status: false,
         message: "All fields are required",
@@ -295,23 +336,24 @@ export const updateUserDetailsController = async (req, res) => {
       });
     }
 
-    const updateUser = await UserModel.findByIdAndUpdate(userId, {
-      ...(name && { name: name }),
-      ...(email && { email: email }),
-      ...(mobile && { mobile: mobile }),
-      ...(password && { password: hashPassword }),
-      
-    },
-  {new: true}
-  );
+    const updateUser = await UserModel.findByIdAndUpdate(
+      userId,
+      {
+        ...(name && { name: name }),
+        ...(email && { email: email }),
+        ...(mobile && { mobile: mobile }),
+        ...(password && { password: hashPassword }),
+      },
+      { new: true }
+    );
 
     return res.send({
       status: true,
       message: "User updated successfully",
       error: false,
       success: true,
-      data: updateUser
-    })
+      data: updateUser,
+    });
   } catch (error) {
     res.status(500).send({
       status: false,
@@ -322,29 +364,249 @@ export const updateUserDetailsController = async (req, res) => {
   }
 };
 
-//FORGET PASSWORD
-export const forgetApiPassword = async (req, res) => {
+//FORGET PASSWORD NOT LOGIN
+export const forgotPasswordController = async (req, res) => {
   try {
-    const {email} = req.body
+    const { email } = req.body;
 
-    const user = await UserModel.findOne({email})
+    const user = await UserModel.findOne({ email });
 
-    if(!user) {
-      return res.send({
+    if (!user) {
+      return res.status(400).send({
         status: false,
         message: "Email not available",
-        error: true, 
-        success: false
-      })
+        error: true,
+        success: false,
+      });
     }
 
-    
+    const otp = generatedOtp();
+
+    const expireTime = new Date() + 60 * 60 * 1000;
+
+    const update = await UserModel.findByIdAndUpdate(
+      user._id,
+      {
+        forgot_password_otp: otp,
+        forgot_password_expiry: new Date(expireTime).toISOString(),
+      },
+      { new: true }
+    );
+
+    await sendEmail({
+      to: email,
+      subject: "Forgot password from Blinkit",
+      html: forgotPasswordTemplate({
+        name: user.name,
+        otp: otp,
+      }),
+    });
+
+    return res.send({
+      status: true,
+      message: "Check your email",
+      success: true,
+      error: false,
+    });
   } catch (error) {
     res.status(500).send({
       status: false,
       message: error.message || error,
       error: true,
-      success: false
-    })
+      success: false,
+    });
   }
-}
+};
+
+//VERIFY FORGOT PASSWORD OTP
+
+export const verifyForgotPasswordOtpController = async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+
+    if (!email || !otp) {
+      return res.status(400).send({
+        status: false,
+        message: "Provide requied field otp, email",
+        success: false,
+        error: true,
+      });
+    }
+
+    const user = await UserModel.findOne({ email });
+
+    if (!user) {
+      return res.send({
+        status: false,
+        message: "Email not available",
+        success: false,
+        error: true,
+      });
+    }
+
+    const currentTime = new Date().toISOString();
+
+    //IF OTP EXPIRED BESIDES OF CURRENT-TIME
+    if (user.forgot_password_expiry < currentTime) {
+      return res.status(400).send({
+        status: false,
+        message: "OTP Expired",
+        error: true,
+        success: false,
+      });
+    }
+
+    //IF OTP CAN NOT MATCH BY THE GMAIL OTP
+    if (otp !== user.forgot_password_otp) {
+      return res.status(400).send({
+        status: false,
+        message: "Invalid OTP please filed the correct OTP",
+        error: true,
+        success: false,
+      });
+    }
+
+    //IF OTP IS NOT EXPIRED AND OTP == USER.FORGOT_PASSWORD_OTP
+
+    const updateUser = await UserModel.findByIdAndUpdate(
+      user?._id,
+      { forgot_password_otp: "", forgot_password_expiry: "" },
+      { new: true }
+    );
+
+    return res.status(200).send({
+      status: true,
+      message: "Verify OTP Successfully",
+      success: true,
+      error: false,
+      data: user,
+    });
+  } catch (error) {
+    return res.status(500).send({
+      status: false,
+      error: error.message || error,
+      success: false,
+    });
+  }
+};
+
+//RESET PASSWORD
+
+export const resetPasswordController = async (req, res) => {
+  try {
+    const { email, newPassword, confirmPassword } = req.body;
+
+    if (!email || !newPassword || !confirmPassword) {
+      return res.status(400).send({
+        status: false,
+        message: "Provide required field email, new password, confirm-password",
+        error: true,
+        success: false,
+      });
+    }
+
+    const user = await UserModel.findOne({ email });
+
+    if (!user) {
+      return res.status(400).send({
+        status: false,
+        message: "Email is not available",
+        error: true,
+        success: false,
+      });
+    }
+
+    if (newPassword !== confirmPassword) {
+      return res.status(400).send({
+        status: false,
+        mesage: "New password & confirmPassword must be same",
+        error: true,
+        success: false,
+      });
+    }
+
+    const hashPassword = await bcrypt.hashSync(newPassword, 10);
+
+    const updateUser = await UserModel.findByIdAndUpdate(
+      user._id,
+      {
+        password: hashPassword,
+      },
+      { new: true }
+    );
+
+    return res.status(200).send({
+      status: true,
+      message: "Password updated successfully",
+      sucess: true,
+      error: false,
+      data: updateUser,
+    });
+  } catch (error) {
+    return res.status(500).send({
+      status: false,
+      message: error.message || error,
+      success: false,
+      error: true,
+    });
+  }
+};
+
+//REFRESH TOKEN CONTROLLER
+
+export const refreshTokenController = async (req, res) => {
+  try {
+    const refreshToken =
+      req.cookies.refreshToken || req?.header?.authorization?.split(" ")[1];
+
+    if (!refreshToken) {
+      return res.status(401).send({
+        status: false,
+        mesage: "Invalid token",
+        error: true,
+        success: false,
+      });
+    }
+
+    const verifyToken = await jwt.verify(
+      refreshToken,
+      process.env.JWT_SECRET_REFRESH_TOKEN
+    );
+
+    if (!verifyToken) {
+      return res.status(401).send({
+        status: false,
+        message: "Token is expired",
+        error: true,
+        success: false,
+      });
+    }
+
+    const userId = verifyToken?._id;
+
+    const newAccessToken = await generatedAccessToken(userId);
+
+    const cookiesOption = {
+      http: true,
+      secure: true,
+      sameSite: "none",
+    };
+
+    res.cookie("accessToken", newAccessToken, cookiesOption);
+
+    return res.status(200).send({
+      status: true,
+      message: "New access token generated",
+      error: false,
+      success: true,
+      data: { accessToken: newAccessToken },
+    });
+  } catch (error) {
+    return res.status(500).send({
+      status: false,
+      message: error.message || error,
+      error: true,
+      success: false,
+    });
+  }
+};

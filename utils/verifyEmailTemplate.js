@@ -1,17 +1,4 @@
 
-// const verifyEmailTemplate = ({name, url}) => {
-//   return  `
-
-//   <p>Dear ${name}</p>
-   
-//     <p>Thank you for registering Blinkit</p>
-//     <a href= ${url} style="color: white; background: red; padding:20px; margin-top: 10px">
-//       verify email
-//     </a>
-//   `
-// }
-
-// export default verifyEmailTemplate
 
 const verifyEmailTemplate = ({ name, url }) => {
   return `
