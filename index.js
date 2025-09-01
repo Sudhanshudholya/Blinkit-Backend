@@ -2,11 +2,12 @@ import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import helmet from "helmet";
-// import morgan from "morgan";
 import dotenv from "dotenv";
 dotenv.config();
 import connectDb from "./config/db.js";
 import userRouter from "./routes/user.route.js";
+import categoryRouter from "./routes/category.route.js";
+import uploadRouter from "./routes/upload.route.js";
 
 const app = express();
 
@@ -21,7 +22,6 @@ app.use(
 
 app.use(cookieParser());
 
-// app.use(morgan());
 
 app.use(
   helmet({
@@ -39,6 +39,8 @@ app.get("/", (req, res) => {
 });
 
 app.use("/api/v1/user", userRouter);
+app.use("/api/v1/category", categoryRouter);
+app.use("/api/v1/file", uploadRouter)
 
 connectDb();
 

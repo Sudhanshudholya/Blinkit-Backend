@@ -223,7 +223,7 @@ export const getUserDetailsController = async (req, res) => {
   try {
     const userId = req.userId;
 
-    console.log(userId, "userid")
+    console.log(userId, "userid");
 
     const user = await UserModel.findById(userId).select(
       "-password -refresh_token"
@@ -237,6 +237,7 @@ export const getUserDetailsController = async (req, res) => {
       data: user,
     });
   } catch (error) {
+    console.log("user-details", error);
     return res.status(500).send({
       status: false,
       message: "Something is wrong",
@@ -284,15 +285,20 @@ export const logOutUserController = async (req, res) => {
 
 export const uploadUserAvatarController = async (req, res) => {
   try {
-    const userId = req.userId; //auth middleware
+    const userId = req?.userId; //auth middleware
     const image = req?.file; //multer middleware
 
+    if (!image) {
+      return res.status(400).send({ message: "No file uploaded", error: true });
+    }
+
     const upload = await uploadImageCloudinary(image);
+
 
     const updateUser = await UserModel.findByIdAndUpdate(
       userId,
       {
-        avatar: upload.url,
+        avatar: upload?.url,
       },
       { new: true }
     );
@@ -300,12 +306,16 @@ export const uploadUserAvatarController = async (req, res) => {
     return res.send({
       status: true,
       message: "Upload profile successfully",
+      success: true,
+      avatar: upload,
+      error: false,
       data: {
         _id: userId,
-        avatar: upload.url,
+        avatar: upload?.url,
       },
     });
   } catch (error) {
+    console.log("user-upload-error", error);
     return res.status(500).send({
       message: error.message || error,
       status: false,
@@ -319,22 +329,23 @@ export const uploadUserAvatarController = async (req, res) => {
 
 export const updateUserDetailsController = async (req, res) => {
   try {
-    const userId = req.userId;
-    const { name, email, mobile, password } = req.body;
+    const userId = req?.userId;
+    const { name, email, mobile, password } = req?.body;
+
     let hashPassword = "";
 
     if (password) {
       hashPassword = bcrypt.hashSync(password, 10);
     }
 
-    if (!name || !email || !mobile || !password) {
-      return res.send({
-        status: false,
-        message: "All fields are required",
-        success: false,
-        error: true,
-      });
-    }
+    // if (!name || !email || !mobile || !password) {
+    //   return res.send({
+    //     status: false,
+    //     message: "All fields are required",
+    //     success: false,
+    //     error: true,
+    //   });
+    // }
 
     const updateUser = await UserModel.findByIdAndUpdate(
       userId,
@@ -349,7 +360,7 @@ export const updateUserDetailsController = async (req, res) => {
 
     return res.send({
       status: true,
-      message: "User updated successfully",
+      message: "Updated successfully",
       error: false,
       success: true,
       data: updateUser,
@@ -365,9 +376,10 @@ export const updateUserDetailsController = async (req, res) => {
 };
 
 //FORGET PASSWORD NOT LOGIN
+
 export const forgotPasswordController = async (req, res) => {
   try {
-    const { email } = req.body;
+    const { email } = req?.body;
 
     const user = await UserModel.findOne({ email });
 
@@ -556,13 +568,11 @@ export const resetPasswordController = async (req, res) => {
 
 export const refreshTokenController = async (req, res) => {
   try {
-    const refreshToken =
-      req.cookies.refreshToken || req?.header?.authorization?.split(" ")[1];
-
+    const refreshToken = req?.cookies?.refreshToken
     if (!refreshToken) {
       return res.status(401).send({
         status: false,
-        mesage: "Invalid token",
+        message: "No refresh token provided",
         error: true,
         success: false,
       });
@@ -573,21 +583,13 @@ export const refreshTokenController = async (req, res) => {
       process.env.JWT_SECRET_REFRESH_TOKEN
     );
 
-    if (!verifyToken) {
-      return res.status(401).send({
-        status: false,
-        message: "Token is expired",
-        error: true,
-        success: false,
-      });
-    }
-
-    const userId = verifyToken?._id;
+   
+    const userId = verifyToken?.id;
 
     const newAccessToken = await generatedAccessToken(userId);
 
     const cookiesOption = {
-      http: true,
+      httpOnly: true,
       secure: true,
       sameSite: "none",
     };
@@ -602,11 +604,19 @@ export const refreshTokenController = async (req, res) => {
       data: { accessToken: newAccessToken },
     });
   } catch (error) {
-    return res.status(500).send({
+    if (error.name === 'TokenExpiredError') {
+    return res.status(401).send({
       status: false,
-      message: error.message || error,
+      message: "Token expired",
       error: true,
-      success: false,
+      success: false
     });
   }
+  return res.status(401).send({
+    status: false,
+    message: "Invalid token",
+    error: true,
+    success: false
+  })
+}
 };
