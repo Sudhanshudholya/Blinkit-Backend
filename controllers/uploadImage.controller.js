@@ -4,7 +4,7 @@ import uploadImageCloudinary from "../utils/uploadImageCloudinary.js"
 
 const uploadImageController = async(req, res) => {
     try {
-        const  file = req.file
+        const  file = req?.file
 
         console.log("FILE", file)
  

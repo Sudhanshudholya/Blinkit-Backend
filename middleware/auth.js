@@ -23,7 +23,7 @@ const auth = async (req, res, next) => {
     }
 
     // Verify token
-    jwt.verify(token, process.env.JWT_SECRET_ACCESS_TOKEN, (err, decoded) => {
+    jwt.verify(token, (process.env.JWT_SECRET_ACCESS_TOKEN || process.env.JWT_SECRET_REFRESH_TOKEN), (err, decoded) => {
       if (err) {
         return res.status(401).send({
           status: false,
