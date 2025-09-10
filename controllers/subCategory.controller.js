@@ -38,6 +38,7 @@ export const getSubCategoryController = async (req, res) => {
       .populate("category")
       .sort({ createdAt: -1 });
 
+
     return res.status(200).send({
       status: true,
       message: "All sub category get successfully",
@@ -94,13 +95,19 @@ export const updateSubCategoryController = async (req, res) => {
 };
 
 export const deleteSubCategoryController = async (req, res) => {
-
   try {
-
     const { _id } = req?.body;
 
-    console.log("Received DELETE request for ID:", req.params.id);
+    const checkSub = await SubCategoryModel.findById(_id);
 
+    if (!checkSub) {
+      return res.status(400).send({
+        status: false,
+        message: "Check your _Id",
+        error: true,
+        success: false,
+      });
+    }
 
     const deleteSub = await SubCategoryModel.findByIdAndDelete(_id);
 
